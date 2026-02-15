@@ -98,7 +98,7 @@ func (r *UserRepo) GetFilteredByRatingASC(ctx context.Context) ([]model.User, er
 	return users, nil
 }
 
-func (r *UserRepo) GeUser(ctx context.Context, nickname string) (*model.User, error) {
+func (r *UserRepo) GetUser(ctx context.Context, nickname string) (*model.User, error) {
 	query := "SELECT id, name, nickname, likes, viewers, rating FROM users WHERE nickname = $1 "
 
 	var user model.User
@@ -111,30 +111,30 @@ func (r *UserRepo) GeUser(ctx context.Context, nickname string) (*model.User, er
 }
 
 func (r *UserRepo) ChangeLikes(ctx context.Context, nickname string, value int) error {
-	query := "UPDATE users SET likes = $1 WHERE nickname = $2 "
+	query := "UPDATE users SET likes = $1 WHERE nickname = $2 AND $1 <= viewers "
 
 	cmdTag, err := r.pool.Exec(ctx, query, value, nickname)
 	if err != nil {
-		return fmt.Errorf("failed to update likes %v", err)
+		return fmt.Errorf("failed to update likes")
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user not found %v", err)
+		return fmt.Errorf("user cannot be updated")
 	}
 
 	return nil
 }
 
 func (r *UserRepo) ChangeViewers(ctx context.Context, nickname string, value int) error {
-	query := "UPDATE users SET viewers = $1 WHERE nickname = $2 "
+	query := "UPDATE users SET viewers = $1 WHERE nickname = $2 AND $1 >= viewers AND $1 >= likes"
 
 	cmdTag, err := r.pool.Exec(ctx, query, value, nickname)
 	if err != nil {
-		return fmt.Errorf("failed to update viewers %v", err)
+		return fmt.Errorf("failed to update viewers")
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user not found %v", err)
+		return fmt.Errorf("user cannot be updated")
 	}
 
 	return nil

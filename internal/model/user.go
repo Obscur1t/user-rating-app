@@ -9,12 +9,11 @@ type User struct {
 	Rating   float64
 }
 
-func NewUser(name, nickname string, likes, viewers int, rating float64) *User {
+func NewUser(name, nickname string, likes, viewers int) *User {
 	return &User{
 		Name:     name,
 		NickName: nickname,
 		Likes:    likes,
 		Viewers:  viewers,
-		Rating:   rating,
 	}
 }
