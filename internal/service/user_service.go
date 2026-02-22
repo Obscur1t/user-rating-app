@@ -27,19 +27,19 @@ func NewUserService(repo UserStore) *UserService {
 
 func (u *UserService) CreateUser(ctx context.Context, dto request.UserRequestDTO) error {
 	if dto.Name == "" {
-		return fmt.Errorf("name cannot be empty")
+		return fmt.Errorf("%w: name cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
+		return fmt.Errorf("%w: nickname cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Likes < 0 || dto.Viewers < 0 {
-		return fmt.Errorf("likes and viewers cannot be negative")
+		return fmt.Errorf("%w: likes and viewers cannot be negative", model.ErrInvalidInput)
 	}
 
 	if dto.Likes > dto.Viewers {
-		return fmt.Errorf("likes cannot be more then viewers")
+		return fmt.Errorf("%w: likes cannot be more then viewers", model.ErrInvalidInput)
 	}
 
 	user := model.NewUser(dto.Name, dto.Nickname, dto.Likes, dto.Viewers)
@@ -52,45 +52,47 @@ func (u *UserService) CreateUser(ctx context.Context, dto request.UserRequestDTO
 }
 
 func (u *UserService) GetAll(ctx context.Context, sort string) ([]model.User, error) {
+	if sort != "" && sort != "desc" && sort != "asc" {
+		return nil, fmt.Errorf("%w: invalid sort parameter", model.ErrInvalidSort)
+	}
 	return u.repo.GetAll(ctx, sort)
 }
 
 func (u *UserService) GetUser(ctx context.Context, nickname string) (*model.User, error) {
 	if nickname == "" {
-		return nil, fmt.Errorf("nickname cannot be empty")
+		return nil, fmt.Errorf("%w: nickname cannot be empty", model.ErrInvalidInput)
 	}
 
-	user, err := u.repo.GetUser(ctx, nickname)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
-	}
-
-	return user, nil
+	return u.repo.GetUser(ctx, nickname)
 }
 
 func (u *UserService) ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error {
 	if nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
+		return fmt.Errorf("%w: nickname cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Likes == nil && dto.Name == nil && dto.Nickname == nil && dto.Viewers == nil {
-		return fmt.Errorf("all data fields cannot be empty")
+		return fmt.Errorf("%w: all data fields cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Likes != nil && *dto.Likes < 0 {
-		return fmt.Errorf("likes cannot be negative")
+		return fmt.Errorf("%w: likes cannot be negative", model.ErrInvalidInput)
 	}
 
 	if dto.Name != nil && *dto.Name == "" {
-		return fmt.Errorf("name cannot be empty")
+		return fmt.Errorf("%w: name cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Nickname != nil && *dto.Nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
+		return fmt.Errorf("%w: nickname cannot be empty", model.ErrInvalidInput)
 	}
 
 	if dto.Viewers != nil && *dto.Viewers < 0 {
-		return fmt.Errorf("viewers cannot be negative")
+		return fmt.Errorf("%w: viewers cannot be negative", model.ErrInvalidInput)
+	}
+
+	if (dto.Likes != nil && dto.Viewers != nil) && *dto.Likes > *dto.Viewers {
+		return fmt.Errorf("%w: likes can't be more than views", model.ErrInvalidInput)
 	}
 
 	if err := u.repo.ChangeData(ctx, nickname, dto); err != nil {
@@ -102,7 +104,7 @@ func (u *UserService) ChangeData(ctx context.Context, nickname string, dto reque
 
 func (u *UserService) Delete(ctx context.Context, nickname string) error {
 	if nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
+		return fmt.Errorf("%w: nickname cannot be empty", model.ErrInvalidInput)
 	}
 
 	return u.repo.Delete(ctx, nickname)

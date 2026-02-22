@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"rating/internal/dto/request"
 	"rating/internal/model"
@@ -29,7 +30,18 @@ func (u *UserHandler) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := u.service.CreateUser(ctx, userRequestDto); err != nil {
-		http.Error(w, "invalid create user", http.StatusInternalServerError)
+
+		if errors.Is(err, model.ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if errors.Is(err, model.ErrAlreadyExists) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -50,17 +62,14 @@ func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	param := r.URL.Query()
 
 	sortParam := param.Get("sort")
-	if sortParam != "" && sortParam != "desc" && sortParam != "asc" {
-		http.Error(w, "query parameter not allowed", http.StatusBadRequest)
-		return
-	}
 
-	var userList []model.User
-	var err error
-
-	userList, err = u.service.GetAll(ctx, sortParam)
+	userList, err := u.service.GetAll(ctx, sortParam)
 
 	if err != nil {
+		if errors.Is(err, model.ErrInvalidSort) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		http.Error(w, "invalid get user's list", http.StatusInternalServerError)
 		return
 	}
@@ -81,7 +90,11 @@ func (u *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 
 	user, err := u.service.GetUser(ctx, nickname)
 	if err != nil {
-		http.Error(w, "invalid get user", http.StatusNotFound)
+		if errors.Is(err, model.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, "invalid get user", http.StatusInternalServerError)
 		return
 	}
 
@@ -106,6 +119,14 @@ func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := u.service.ChangeData(ctx, nickname, updateUser); err != nil {
+		if errors.Is(err, model.ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, model.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, "invalid change data", http.StatusInternalServerError)
 		return
 	}
@@ -128,6 +149,14 @@ func (u *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	nickname := r.PathValue("nickname")
 
 	if err := u.service.Delete(ctx, nickname); err != nil {
+		if errors.Is(err, model.ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, model.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
 		http.Error(w, "invalid delete user", http.StatusInternalServerError)
 		return
 	}

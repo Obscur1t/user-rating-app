@@ -51,7 +51,7 @@ func main() {
 
 	pool, err := db.NewDb(context.Background(), dbUrl)
 	if err != nil {
-		log.Fatalf("failed to create pool: %vå", err)
+		log.Fatalf("failed to create pool: %v", err)
 	}
 
 	userRepo := postgres.NewUserRepo(pool)
