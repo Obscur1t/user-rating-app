@@ -5,14 +5,21 @@ import (
 	"fmt"
 	"rating/internal/dto/request"
 	"rating/internal/model"
-	"rating/internal/repo"
 )
 
-type UserService struct {
-	repo repo.RepoInterface
+type UserStore interface {
+	Create(ctx context.Context, user model.User) error
+	GetAll(ctx context.Context, sort string) ([]model.User, error)
+	GetUser(ctx context.Context, nickname string) (*model.User, error)
+	ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error
+	Delete(ctx context.Context, nickname string) error
 }
 
-func NewUserService(repo repo.RepoInterface) *UserService {
+type UserService struct {
+	repo UserStore
+}
+
+func NewUserService(repo UserStore) *UserService {
 	return &UserService{
 		repo: repo,
 	}
@@ -38,22 +45,14 @@ func (u *UserService) CreateUser(ctx context.Context, dto request.UserRequestDTO
 	user := model.NewUser(dto.Name, dto.Nickname, dto.Likes, dto.Viewers)
 
 	if err := u.repo.Create(ctx, *user); err != nil {
-		return fmt.Errorf("failed to create use %v", err)
+		return fmt.Errorf("failed to create user: %w", err)
 	}
 
 	return nil
 }
 
-func (u *UserService) GetAll(ctx context.Context) ([]model.User, error) {
-	return u.repo.GetAll(ctx)
-}
-
-func (u *UserService) GetFilteredByRatingDESC(ctx context.Context) ([]model.User, error) {
-	return u.repo.GetFilteredByRatingDESC(ctx)
-}
-
-func (u *UserService) GetFilteredByRatingASC(ctx context.Context) ([]model.User, error) {
-	return u.repo.GetFilteredByRatingASC(ctx)
+func (u *UserService) GetAll(ctx context.Context, sort string) ([]model.User, error) {
+	return u.repo.GetAll(ctx, sort)
 }
 
 func (u *UserService) GetUser(ctx context.Context, nickname string) (*model.User, error) {
@@ -69,87 +68,33 @@ func (u *UserService) GetUser(ctx context.Context, nickname string) (*model.User
 	return user, nil
 }
 
-func (u *UserService) ChangeLikes(ctx context.Context, nickname string, value int) error {
+func (u *UserService) ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error {
 	if nickname == "" {
 		return fmt.Errorf("nickname cannot be empty")
 	}
 
-	if value < 0 {
+	if dto.Likes == nil && dto.Name == nil && dto.Nickname == nil && dto.Viewers == nil {
+		return fmt.Errorf("all data fields cannot be empty")
+	}
+
+	if dto.Likes != nil && *dto.Likes < 0 {
 		return fmt.Errorf("likes cannot be negative")
 	}
 
-	user, err := u.repo.GetUser(ctx, nickname)
-	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
-	}
-
-	if value > user.Viewers {
-		return fmt.Errorf("likes cannot be more than viewers")
-	}
-
-	if err := u.repo.ChangeLikes(ctx, nickname, value); err != nil {
-		return fmt.Errorf("failed to change likes %v", err)
-	}
-
-	return nil
-}
-
-func (u *UserService) ChangeViewers(ctx context.Context, nickname string, value int) error {
-	if nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
-	}
-
-	if value < 0 {
-		return fmt.Errorf("viewers cannot be negative")
-	}
-
-	user, err := u.repo.GetUser(ctx, nickname)
-	if err != nil {
-		return fmt.Errorf("failed to get user: %w", err)
-	}
-
-	if value < user.Viewers {
-		return fmt.Errorf("viewers cannot be less than previous value")
-	}
-
-	if value < user.Likes {
-		return fmt.Errorf("viewers cannot be less than likes")
-	}
-
-	if err := u.repo.ChangeViewers(ctx, nickname, value); err != nil {
-		return fmt.Errorf("failed to change viewers %v", err)
-	}
-
-	return nil
-}
-
-func (u *UserService) ChangeName(ctx context.Context, nickname, value string) error {
-	if nickname == "" {
-		return fmt.Errorf("nickname cannot be empty")
-	}
-
-	if value == "" {
+	if dto.Name != nil && *dto.Name == "" {
 		return fmt.Errorf("name cannot be empty")
 	}
 
-	if err := u.repo.ChangeName(ctx, nickname, value); err != nil {
-		return fmt.Errorf("failed to change name %v", err)
-	}
-
-	return nil
-}
-
-func (u *UserService) ChangeNickname(ctx context.Context, nickname, value string) error {
-	if nickname == "" {
+	if dto.Nickname != nil && *dto.Nickname == "" {
 		return fmt.Errorf("nickname cannot be empty")
 	}
 
-	if value == "" {
-		return fmt.Errorf("nickname cannot be empty")
+	if dto.Viewers != nil && *dto.Viewers < 0 {
+		return fmt.Errorf("viewers cannot be negative")
 	}
 
-	if err := u.repo.ChangeNickname(ctx, nickname, value); err != nil {
-		return fmt.Errorf("failed to change nickname %v", err)
+	if err := u.repo.ChangeData(ctx, nickname, dto); err != nil {
+		return fmt.Errorf("failed to change data: %w", err)
 	}
 
 	return nil

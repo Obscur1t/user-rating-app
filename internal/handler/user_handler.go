@@ -50,20 +50,15 @@ func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 	param := r.URL.Query()
 
 	sortParam := param.Get("sort")
+	if sortParam != "" && sortParam != "desc" && sortParam != "asc" {
+		http.Error(w, "query parameter not allowed", http.StatusBadRequest)
+		return
+	}
 
 	var userList []model.User
 	var err error
 
-	if sortParam == "" {
-		userList, err = u.service.GetAll(ctx)
-	} else if sortParam == "desc" {
-		userList, err = u.service.GetFilteredByRatingDESC(ctx)
-	} else if sortParam == "asc" {
-		userList, err = u.service.GetFilteredByRatingASC(ctx)
-	} else {
-		http.Error(w, "query parameter not allowed", http.StatusBadRequest)
-		return
-	}
+	userList, err = u.service.GetAll(ctx, sortParam)
 
 	if err != nil {
 		http.Error(w, "invalid get user's list", http.StatusInternalServerError)
@@ -110,32 +105,8 @@ func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if updateUser.Likes != nil {
-		if err := u.service.ChangeLikes(ctx, nickname, *updateUser.Likes); err != nil {
-			http.Error(w, "invalid change likes", http.StatusInternalServerError)
-			return
-		}
-	}
-	if updateUser.Viewers != nil {
-		if err := u.service.ChangeViewers(ctx, nickname, *updateUser.Viewers); err != nil {
-			http.Error(w, "invalid change viewers", http.StatusInternalServerError)
-			return
-		}
-	}
-	if updateUser.Name != nil {
-		if err := u.service.ChangeName(ctx, nickname, *updateUser.Name); err != nil {
-			http.Error(w, "invalid change name", http.StatusInternalServerError)
-			return
-		}
-	}
-	if updateUser.Nickname != nil {
-		if err := u.service.ChangeNickname(ctx, nickname, *updateUser.Nickname); err != nil {
-			http.Error(w, "invalid change nickname", http.StatusInternalServerError)
-			return
-		}
-	}
-	if updateUser.Name == nil && updateUser.Likes == nil && updateUser.Viewers == nil && updateUser.Nickname == nil {
-		http.Error(w, "all data is nil", http.StatusBadRequest)
+	if err := u.service.ChangeData(ctx, nickname, updateUser); err != nil {
+		http.Error(w, "invalid change data", http.StatusInternalServerError)
 		return
 	}
 

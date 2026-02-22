@@ -7,16 +7,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func NewDb(ctx context.Context) (*pgxpool.Pool, error) {
-	dbUrl := "postgres://obscurity:1010@localhost:5432/rating-app"
+func NewDb(ctx context.Context, dbUrl string) (*pgxpool.Pool, error) {
 
 	pool, err := pgxpool.New(ctx, dbUrl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create pool %v", err)
+		return nil, fmt.Errorf("failed to create pool: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("failed to ping %v", err)
+		return nil, fmt.Errorf("failed to ping: %w", err)
 	}
 
 	return pool, nil
