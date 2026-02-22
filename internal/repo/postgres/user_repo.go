@@ -2,12 +2,14 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"rating/internal/dto/request"
 	"rating/internal/model"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,7 +30,7 @@ func (r *UserRepo) scanUser(rows pgx.Rows) ([]model.User, error) {
 		var user model.User
 		err := rows.Scan(&user.Id, &user.Name, &user.NickName, &user.Likes, &user.Viewers, &user.Rating)
 		if err != nil {
-			return nil, fmt.Errorf("failed to scan user data: %w", err)
+			return nil, fmt.Errorf("%w: failed to scan user data", err)
 		}
 		users = append(users, user)
 	}
@@ -44,7 +46,14 @@ func (r *UserRepo) Create(ctx context.Context, user model.User) error {
 	query := "INSERT INTO users (name, nickname, likes, viewers) VALUES($1, $2, $3, $4)"
 
 	_, err := r.pool.Exec(ctx, query, user.Name, user.NickName, user.Likes, user.Viewers)
+
+	var pgxErr *pgconn.PgError
 	if err != nil {
+		if errors.As(err, &pgxErr) {
+			if pgxErr.Code == "23505" {
+				return fmt.Errorf("%w: nickname %s already exists", model.ErrAlreadyExists, user.NickName)
+			}
+		}
 		return fmt.Errorf("failed to create user: %w", err)
 	}
 
@@ -75,6 +84,9 @@ func (r *UserRepo) GetUser(ctx context.Context, nickname string) (*model.User, e
 	var user model.User
 	err := r.pool.QueryRow(ctx, query, nickname).Scan(&user.Id, &user.Name, &user.NickName, &user.Likes, &user.Viewers, &user.Rating)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("%w: user not found", model.ErrNotFound)
+		}
 		return nil, fmt.Errorf("failed to get user: %w", err)
 	}
 
@@ -111,11 +123,17 @@ func (r *UserRepo) ChangeData(ctx context.Context, nickname string, dto request.
 
 	cmdTag, err := r.pool.Exec(ctx, query, args...)
 	if err != nil {
+		var pgxErr *pgconn.PgError
+		if errors.As(err, &pgxErr) {
+			if pgxErr.Code == "23514" {
+				return fmt.Errorf("%w: likes can't be more than views", model.ErrInvalidInput)
+			}
+		}
 		return fmt.Errorf("failed to update data: %w", err)
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user cannot be updated")
+		return fmt.Errorf("%w: user not found", model.ErrNotFound)
 	}
 
 	return nil
@@ -130,7 +148,7 @@ func (r *UserRepo) Delete(ctx context.Context, nickname string) error {
 	}
 
 	if cmdTag.RowsAffected() == 0 {
-		return fmt.Errorf("user not found")
+		return fmt.Errorf("%w: user not found", model.ErrNotFound)
 	}
 
 	return nil
