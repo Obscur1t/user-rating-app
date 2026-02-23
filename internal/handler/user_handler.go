@@ -1,19 +1,48 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"rating/internal/dto/request"
 	"rating/internal/model"
-	"rating/internal/service"
 )
 
-type UserHandler struct {
-	service *service.UserService
+func responseJSON(w http.ResponseWriter, status int, data any) {
+	b, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("%v: failed to marshal", err)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+
+		w.Write([]byte(`{"error": "internal server error"}`))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	w.Write(b)
 }
 
-func NewUserHandler(service *service.UserService) *UserHandler {
+func responseErr(w http.ResponseWriter, status int, message string) {
+	responseJSON(w, status, map[string]string{"error": message})
+}
+
+type UserService interface {
+	CreateUser(ctx context.Context, dto request.UserRequestDTO) error
+	GetAll(ctx context.Context, sort string) ([]model.User, error)
+	GetUser(ctx context.Context, nickname string) (*model.User, error)
+	ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error
+	Delete(ctx context.Context, nickname string) error
+}
+
+type UserHandler struct {
+	service UserService
+}
+
+func NewUserHandler(service UserService) *UserHandler {
 	return &UserHandler{
 		service: service,
 	}
@@ -25,35 +54,27 @@ func (u *UserHandler) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
 	var userRequestDto request.UserRequestDTO
 
 	if err := json.NewDecoder(r.Body).Decode(&userRequestDto); err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		responseErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := u.service.CreateUser(ctx, userRequestDto); err != nil {
 
 		if errors.Is(err, model.ErrInvalidInput) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			responseErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		if errors.Is(err, model.ErrAlreadyExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
+			responseErr(w, http.StatusConflict, err.Error())
 			return
 		}
 
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		responseErr(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
 	response := map[string]string{"status": "ok"}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "invalid encode response", http.StatusInternalServerError)
-		return
-	}
+	responseJSON(w, http.StatusCreated, response)
 }
 
 func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -67,20 +88,14 @@ func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if errors.Is(err, model.ErrInvalidSort) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			responseErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		http.Error(w, "invalid get user's list", http.StatusInternalServerError)
+		responseErr(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(userList); err != nil {
-		http.Error(w, "invalid encode response", http.StatusInternalServerError)
-		return
-	}
+	responseJSON(w, http.StatusOK, userList)
 }
 
 func (u *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -91,20 +106,14 @@ func (u *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	user, err := u.service.GetUser(ctx, nickname)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			responseErr(w, http.StatusNotFound, err.Error())
 			return
 		}
-		http.Error(w, "invalid get user", http.StatusInternalServerError)
+		responseErr(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(user); err != nil {
-		http.Error(w, "invalid encode user", http.StatusInternalServerError)
-		return
-	}
+	responseJSON(w, http.StatusOK, user)
 }
 
 func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
@@ -114,33 +123,24 @@ func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
 	var updateUser request.UpdateUserDTO
 
 	if err := json.NewDecoder(r.Body).Decode(&updateUser); err != nil {
-		http.Error(w, "invalid decode json", http.StatusBadRequest)
+		responseErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := u.service.ChangeData(ctx, nickname, updateUser); err != nil {
 		if errors.Is(err, model.ErrInvalidInput) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			responseErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if errors.Is(err, model.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			responseErr(w, http.StatusNotFound, err.Error())
 			return
 		}
-		http.Error(w, "invalid change data", http.StatusInternalServerError)
+		responseErr(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
 	response := map[string]string{"status": "ok"}
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		http.Error(w, "invalid encode response", http.StatusInternalServerError)
-		return
-	}
-
+	responseJSON(w, http.StatusOK, response)
 }
 
 func (u *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -150,14 +150,14 @@ func (u *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if err := u.service.Delete(ctx, nickname); err != nil {
 		if errors.Is(err, model.ErrInvalidInput) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			responseErr(w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if errors.Is(err, model.ErrNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
+			responseErr(w, http.StatusNotFound, err.Error())
 			return
 		}
-		http.Error(w, "invalid delete user", http.StatusInternalServerError)
+		responseErr(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
