@@ -40,7 +40,7 @@ func main() {
 	}
 
 	dbUrl := os.Getenv("DB_URL")
-	addr := os.Getenv("SERVER_PORT")
+	addr := os.Getenv("SERVER_ADDR")
 	if dbUrl == "" {
 		log.Fatal("DB_URL environment variable is not set")
 	}
@@ -93,5 +93,5 @@ func main() {
 		log.Fatalf("Server forced to shutdown: %v", err)
 	}
 
-	pool.Close()
+	defer pool.Close()
 }

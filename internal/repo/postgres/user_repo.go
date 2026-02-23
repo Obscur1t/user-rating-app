@@ -126,7 +126,7 @@ func (r *UserRepo) ChangeData(ctx context.Context, nickname string, dto request.
 		var pgxErr *pgconn.PgError
 		if errors.As(err, &pgxErr) {
 			if pgxErr.Code == "23514" {
-				return fmt.Errorf("%w: likes can't be more than views", model.ErrInvalidInput)
+				return fmt.Errorf("%w: likes can't be more than viewers", model.ErrInvalidInput)
 			}
 		}
 		return fmt.Errorf("failed to update data: %w", err)
