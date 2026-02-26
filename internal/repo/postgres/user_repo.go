@@ -61,7 +61,7 @@ func (r *UserRepo) Create(ctx context.Context, user model.User) error {
 }
 
 func (r *UserRepo) GetAll(ctx context.Context, sort string) ([]model.User, error) {
-	query := "SELECT id, name, nickname, likes, viewers, rating FROM users "
+	query := "SELECT id, name, nickname, likes, viewers, rating FROM users"
 
 	if sort == "desc" {
 		query += "ORDER BY rating DESC"
@@ -79,7 +79,7 @@ func (r *UserRepo) GetAll(ctx context.Context, sort string) ([]model.User, error
 }
 
 func (r *UserRepo) GetUser(ctx context.Context, nickname string) (*model.User, error) {
-	query := "SELECT id, name, nickname, likes, viewers, rating FROM users WHERE nickname = $1 "
+	query := "SELECT id, name, nickname, likes, viewers, rating FROM users WHERE nickname = $1"
 
 	var user model.User
 	err := r.pool.QueryRow(ctx, query, nickname).Scan(&user.Id, &user.Name, &user.NickName, &user.Likes, &user.Viewers, &user.Rating)
