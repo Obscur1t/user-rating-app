@@ -91,6 +91,10 @@ func (u *UserService) ChangeData(ctx context.Context, nickname string, dto reque
 		return fmt.Errorf("%w: viewers cannot be negative", model.ErrInvalidInput)
 	}
 
+	if dto.Likes != nil && dto.Viewers != nil && *dto.Likes > *dto.Viewers {
+		return fmt.Errorf("%w: likes cannot be more than viewers", model.ErrInvalidInput)
+	}
+
 	if err := u.repo.ChangeData(ctx, nickname, dto); err != nil {
 		return fmt.Errorf("failed to change data: %w", err)
 	}
