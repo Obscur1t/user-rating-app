@@ -9,6 +9,8 @@ import (
 	"os/signal"
 	"rating/internal/db"
 	"rating/internal/handler"
+	"rating/internal/logger"
+	"rating/internal/middleware"
 	"rating/internal/repo/postgres"
 	"rating/internal/service"
 	"syscall"
@@ -18,12 +20,14 @@ import (
 )
 
 func main() {
+	// env
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, relying on system environment variables")
 	}
 
 	dbUrl := os.Getenv("DB_URL")
 	addr := os.Getenv("SERVER_ADDR")
+	logLevel := os.Getenv("LOG_LEVEL")
 	if dbUrl == "" {
 		log.Fatal("DB_URL environment variable is not set")
 	}
@@ -32,16 +36,26 @@ func main() {
 		addr = ":8080"
 	}
 
+	if logLevel == "" {
+		log.Fatal("LOG_LEVEL environment variable is not set")
+	}
+
 	pool, err := db.NewDb(context.Background(), dbUrl)
 	if err != nil {
 		log.Fatalf("failed to create pool: %v", err)
 	}
+	logger := logger.SetupLogger(logLevel)
 
 	userRepo := postgres.NewUserRepo(pool)
 	userService := service.NewUserService(userRepo)
-	userHandlers := handler.NewUserHandler(userService)
+	userHandlers := handler.NewUserHandler(userService, logger)
 
 	mux := http.NewServeMux()
+	chainedHandler := middleware.Chain(
+		mux,
+		middleware.RecoveryMiddleware(logger),
+		middleware.LoggerMiddleware(logger),
+	)
 
 	mux.HandleFunc("POST /users", userHandlers.CreateUserHandler)
 	mux.HandleFunc("GET /users", userHandlers.GetUsers)
@@ -51,7 +65,7 @@ func main() {
 
 	server := &http.Server{
 		Addr:         addr,
-		Handler:      mux,
+		Handler:      chainedHandler,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 		IdleTimeout:  10 * time.Second,
