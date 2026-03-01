@@ -32,6 +32,7 @@ services:
     ports:
       - "8080:8080"
     environment:
+      - LOG_LEVEL=local
       - DB_URL=postgres://admin:123@db:5432/rating-db?sslmode=disable
     depends_on:
       db:

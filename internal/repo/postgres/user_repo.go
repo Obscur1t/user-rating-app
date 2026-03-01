@@ -60,22 +60,31 @@ func (r *UserRepo) Create(ctx context.Context, user model.User) error {
 	return nil
 }
 
-func (r *UserRepo) GetAll(ctx context.Context, sort string) ([]model.User, error) {
+func (r *UserRepo) GetAll(ctx context.Context, params request.PaginationQuery) ([]model.User, int, error) {
 	query := "SELECT id, name, nickname, likes, viewers, rating FROM users"
 
-	if sort == "desc" {
-		query += "ORDER BY rating DESC"
-	} else if sort == "asc" {
-		query += "ORDER BY rating ASC"
+	var totalCount int
+	if err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&totalCount); err != nil {
+		return nil, -1, fmt.Errorf("failed to get total count users: %w", err)
 	}
 
-	rows, err := r.pool.Query(ctx, query)
+	if params.Sort == "desc" {
+		query += " ORDER BY rating DESC"
+	} else if params.Sort == "asc" {
+		query += " ORDER BY rating ASC"
+	}
+
+	query += " LIMIT $1 OFFSET $2"
+
+	rows, err := r.pool.Query(ctx, query, params.Limit, params.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get all users: %w", err)
+		return nil, -1, fmt.Errorf("failed to get all users: %w", err)
 	}
 	defer rows.Close()
 
-	return r.scanUser(rows)
+	userList, err := r.scanUser(rows)
+
+	return userList, totalCount, err
 }
 
 func (r *UserRepo) GetUser(ctx context.Context, nickname string) (*model.User, error) {

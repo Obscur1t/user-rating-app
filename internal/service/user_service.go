@@ -9,7 +9,7 @@ import (
 
 type UserStore interface {
 	Create(ctx context.Context, user model.User) error
-	GetAll(ctx context.Context, sort string) ([]model.User, error)
+	GetAll(ctx context.Context, params request.PaginationQuery) ([]model.User, int, error)
 	GetUser(ctx context.Context, nickname string) (*model.User, error)
 	ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error
 	Delete(ctx context.Context, nickname string) error
@@ -51,11 +51,15 @@ func (u *UserService) CreateUser(ctx context.Context, dto request.UserRequestDTO
 	return nil
 }
 
-func (u *UserService) GetAll(ctx context.Context, sort string) ([]model.User, error) {
-	if sort != "" && sort != "desc" && sort != "asc" {
-		return nil, fmt.Errorf("%w: invalid sort parameter", model.ErrInvalidSort)
+func (u *UserService) GetAll(ctx context.Context, params request.PaginationQuery) ([]model.User, int, error) {
+	if params.Sort != "" && params.Sort != "desc" && params.Sort != "asc" {
+		return nil, -1, fmt.Errorf("%w: invalid sort parameter", model.ErrInvalidSort)
 	}
-	return u.repo.GetAll(ctx, sort)
+
+	if params.Limit < 1 || params.Offset < 0 {
+		return nil, -1, fmt.Errorf("%w: page or size cannot be negative or 0", model.ErrInvalidInput)
+	}
+	return u.repo.GetAll(ctx, params)
 }
 
 func (u *UserService) GetUser(ctx context.Context, nickname string) (*model.User, error) {

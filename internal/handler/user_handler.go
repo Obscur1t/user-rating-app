@@ -4,35 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"rating/internal/dto/request"
+	responsedto "rating/internal/dto/response"
 	"rating/internal/model"
+	response "rating/internal/transport/http"
+	"strconv"
 )
-
-func responseJSON(w http.ResponseWriter, status int, data any) {
-	b, err := json.Marshal(data)
-	if err != nil {
-		log.Printf("%v: failed to marshal", err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-
-		w.Write([]byte(`{"error": "internal server error"}`))
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	w.Write(b)
-}
-
-func responseErr(w http.ResponseWriter, status int, message string) {
-	responseJSON(w, status, map[string]string{"error": message})
-}
 
 type UserService interface {
 	CreateUser(ctx context.Context, dto request.UserRequestDTO) error
-	GetAll(ctx context.Context, sort string) ([]model.User, error)
+	GetAll(ctx context.Context, params request.PaginationQuery) ([]model.User, int, error)
 	GetUser(ctx context.Context, nickname string) (*model.User, error)
 	ChangeData(ctx context.Context, nickname string, dto request.UpdateUserDTO) error
 	Delete(ctx context.Context, nickname string) error
@@ -40,11 +23,13 @@ type UserService interface {
 
 type UserHandler struct {
 	service UserService
+	logger  *slog.Logger
 }
 
-func NewUserHandler(service UserService) *UserHandler {
+func NewUserHandler(service UserService, log *slog.Logger) *UserHandler {
 	return &UserHandler{
 		service: service,
+		logger:  log,
 	}
 }
 
@@ -54,27 +39,27 @@ func (u *UserHandler) CreateUserHandler(w http.ResponseWriter, r *http.Request) 
 	var userRequestDto request.UserRequestDTO
 
 	if err := json.NewDecoder(r.Body).Decode(&userRequestDto); err != nil {
-		responseErr(w, http.StatusBadRequest, "invalid request body")
+		response.ResponseErr(u.logger, w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := u.service.CreateUser(ctx, userRequestDto); err != nil {
 
 		if errors.Is(err, model.ErrInvalidInput) {
-			responseErr(w, http.StatusBadRequest, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusBadRequest, err.Error())
 			return
 		}
 
 		if errors.Is(err, model.ErrAlreadyExists) {
-			responseErr(w, http.StatusConflict, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusConflict, err.Error())
 			return
 		}
 
-		responseErr(w, http.StatusInternalServerError, "internal server error")
+		response.ResponseErr(u.logger, w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	response := map[string]string{"status": "ok"}
-	responseJSON(w, http.StatusCreated, response)
+	statusMsg := map[string]string{"status": "ok"}
+	response.ResponseJSON(u.logger, w, http.StatusCreated, statusMsg)
 }
 
 func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -82,20 +67,37 @@ func (u *UserHandler) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	param := r.URL.Query()
 
-	sortParam := param.Get("sort")
+	sort := param.Get("sort")
 
-	userList, err := u.service.GetAll(ctx, sortParam)
+	size, err := strconv.Atoi(param.Get("size"))
+	if err != nil {
+		size = 10
+	}
+	page, err := strconv.Atoi(param.Get("page"))
+	if err != nil {
+		page = 1
+	}
+	offset := (page - 1) * size
+
+	params := request.NewPaginationQuery(size, offset, sort)
+
+	userList, totalCount, err := u.service.GetAll(ctx, params)
 
 	if err != nil {
-		if errors.Is(err, model.ErrInvalidSort) {
-			responseErr(w, http.StatusBadRequest, err.Error())
+		if errors.Is(err, model.ErrInvalidInput) {
+			response.ResponseErr(u.logger, w, http.StatusBadRequest, err.Error())
 			return
 		}
-		responseErr(w, http.StatusInternalServerError, "internal server error")
+		if errors.Is(err, model.ErrInvalidSort) {
+			response.ResponseErr(u.logger, w, http.StatusBadRequest, err.Error())
+			return
+		}
+		response.ResponseErr(u.logger, w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	data := responsedto.NewPaginatedResponse(userList, totalCount)
 
-	responseJSON(w, http.StatusOK, userList)
+	response.ResponseJSON(u.logger, w, http.StatusOK, data)
 }
 
 func (u *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
@@ -106,14 +108,14 @@ func (u *UserHandler) GetUser(w http.ResponseWriter, r *http.Request) {
 	user, err := u.service.GetUser(ctx, nickname)
 	if err != nil {
 		if errors.Is(err, model.ErrNotFound) {
-			responseErr(w, http.StatusNotFound, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusNotFound, err.Error())
 			return
 		}
-		responseErr(w, http.StatusInternalServerError, "internal server error")
+		response.ResponseErr(u.logger, w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	responseJSON(w, http.StatusOK, user)
+	response.ResponseJSON(u.logger, w, http.StatusOK, user)
 }
 
 func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
@@ -123,24 +125,24 @@ func (u *UserHandler) ChangeData(w http.ResponseWriter, r *http.Request) {
 	var updateUser request.UpdateUserDTO
 
 	if err := json.NewDecoder(r.Body).Decode(&updateUser); err != nil {
-		responseErr(w, http.StatusBadRequest, "invalid request body")
+		response.ResponseErr(u.logger, w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
 	if err := u.service.ChangeData(ctx, nickname, updateUser); err != nil {
 		if errors.Is(err, model.ErrInvalidInput) {
-			responseErr(w, http.StatusBadRequest, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if errors.Is(err, model.ErrNotFound) {
-			responseErr(w, http.StatusNotFound, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusNotFound, err.Error())
 			return
 		}
-		responseErr(w, http.StatusInternalServerError, "internal server error")
+		response.ResponseErr(u.logger, w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	response := map[string]string{"status": "ok"}
-	responseJSON(w, http.StatusOK, response)
+	responseMsg := map[string]string{"status": "ok"}
+	response.ResponseJSON(u.logger, w, http.StatusOK, responseMsg)
 }
 
 func (u *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -150,14 +152,14 @@ func (u *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if err := u.service.Delete(ctx, nickname); err != nil {
 		if errors.Is(err, model.ErrInvalidInput) {
-			responseErr(w, http.StatusBadRequest, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusBadRequest, err.Error())
 			return
 		}
 		if errors.Is(err, model.ErrNotFound) {
-			responseErr(w, http.StatusNotFound, err.Error())
+			response.ResponseErr(u.logger, w, http.StatusNotFound, err.Error())
 			return
 		}
-		responseErr(w, http.StatusInternalServerError, "internal server error")
+		response.ResponseErr(u.logger, w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
