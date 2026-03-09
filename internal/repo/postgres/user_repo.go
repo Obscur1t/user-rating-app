@@ -72,6 +72,8 @@ func (r *UserRepo) GetAll(ctx context.Context, params request.PaginationQuery) (
 		query += " ORDER BY rating DESC"
 	} else if params.Sort == "asc" {
 		query += " ORDER BY rating ASC"
+	} else {
+		query += " ORDER BY id ASC"
 	}
 
 	query += " LIMIT $1 OFFSET $2"
